@@ -31,7 +31,7 @@ func main() {
 
 		//Web Server
 		go func() {
-
+			errChan <- server.StartWeb(ctx, cfg)
 		}()
 
 		sigChan := make(chan os.Signal, 1)
