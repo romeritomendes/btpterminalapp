@@ -14,7 +14,6 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/romeritomendes/btpterminalapp/server/internal/config"
 	"github.com/romeritomendes/btpterminalapp/server/internal/ui"
-	"golang.org/x/crypto/ssh"
 )
 
 var upgrader = websocket.Upgrader{
@@ -27,6 +26,8 @@ var upgrader = websocket.Upgrader{
 
 func HandlerWS(ctx context.Context) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		log.Info("Handler: WS")
+
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			return
@@ -38,12 +39,15 @@ func HandlerWS(ctx context.Context) http.HandlerFunc {
 
 		if _, err := p.Run(); err != nil {
 			ctx.Done()
+			return
 		}
 	}
 }
 
 func HandlerProxySSH(ctx context.Context, cfg *config.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		log.Info("Handler: ProxySSH")
+
 		wsConn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			log.Error("Failed to upgrade to WebSocket", "error", err)
@@ -51,30 +55,14 @@ func HandlerProxySSH(ctx context.Context, cfg *config.Config) http.HandlerFunc {
 		}
 		defer wsConn.Close()
 
-		config := &ssh.ClientConfig{
-			User:            "proxy-user",
-			Auth:            []ssh.AuthMethod{ssh.Password("")},
-			HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-		}
-
-		addrSSH := net.JoinHostPort("localhsot", fmt.Sprint(cfg.SSHPort))
-		sshClient, err := ssh.Dial("tcp", addrSSH, config)
+		addrSSH := net.JoinHostPort("localhost", fmt.Sprint(cfg.SSHPort))
+		sshClient, err := net.Dial("tcp", addrSSH)
 		if err != nil {
 			log.Error("Failed to connect to SSH Server", "error", err)
 			wsConn.WriteMessage(websocket.TextMessage, []byte("Failed to connect to SSH Server"))
 			return
 		}
 		defer sshClient.Close()
-
-		session, _ := sshClient.NewSession()
-		defer session.Close()
-
-		modes := ssh.TerminalModes{ssh.ECHO: 0}
-		session.RequestPty("xterm-256color", 80, 40, modes)
-
-		sshIn, _ := session.StdinPipe()
-		sshOut, _ := session.StdoutPipe()
-		session.Start("")
 
 		log.Info("WebSocket client connected", "remote", r.RemoteAddr)
 
@@ -84,14 +72,16 @@ func HandlerProxySSH(ctx context.Context, cfg *config.Config) http.HandlerFunc {
 		go func() {
 			defer wg.Done()
 			for {
-				_, msg, err := wsConn.ReadMessage()
+				msgType, msg, err := wsConn.ReadMessage()
 				if err != nil {
 					log.Debug("WebSocket read error", "error", err)
-					<-ctx.Done()
+					return
 				}
-				if _, err := sshIn.Write(msg); err != nil {
-					log.Debug("SSH write error", "error", err)
-					<-ctx.Done()
+				if msgType == websocket.BinaryMessage || msgType == websocket.TextMessage {
+					if _, err := sshClient.Write(msg); err != nil {
+						log.Debug("SSH write error", "error", err)
+						return
+					}
 				}
 			}
 		}()
@@ -100,14 +90,14 @@ func HandlerProxySSH(ctx context.Context, cfg *config.Config) http.HandlerFunc {
 			defer wg.Done()
 			buf := make([]byte, 32*1024)
 			for {
-				n, err := sshOut.Read(buf)
+				n, err := sshClient.Read(buf)
 				if err != nil {
 					log.Debug("SSH read error", "error", err)
-					<-ctx.Done()
+					return
 				}
 				if err := wsConn.WriteMessage(websocket.BinaryMessage, buf[:n]); err != nil {
 					log.Debug("WebSocket write error", "error", err)
-					<-ctx.Done()
+					return
 				}
 			}
 		}()
