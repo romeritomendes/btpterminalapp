@@ -4,16 +4,36 @@ package server
 
 import (
 	"context"
+	"fmt"
+	"net"
 	"net/http"
 
 	"github.com/romeritomendes/btpterminalapp/server/internal/config"
 )
 
 func StartWeb(ctx context.Context, cfg *config.Config) error {
+	addr := net.JoinHostPort(cfg.Host, fmt.Sprint(cfg.WebPort))
+
 	mux := http.NewServeMux()
 
 	mux.Handle("/", http.FileServer(http.Dir("public")))
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	})
+	mux.HandleFunc("/ws", HandlerWS(ctx))
+	mux.HandleFunc("/proxySSH", HandlerProxySSH(ctx, cfg))
 
-	err := http.ListenAndServe(":8080", mux)
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: mux,
+	}
+
+	go func() {
+		<-ctx.Done()
+		srv.Shutdown(context.Background())
+	}()
+
+	err := srv.ListenAndServe()
 	return err
 }
