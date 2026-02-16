@@ -28,6 +28,8 @@ func StartSSH(ctx context.Context, cfg *config.Config) error {
 			bubbletea.Middleware(teaHandler),
 			logging.Middleware(),
 		),
+		wish.WithPublicKeyAuth(func(ctx ssh.Context, key ssh.PublicKey) bool { return true }),
+		//wish.WithPasswordAuth(func(ctx ssh.Context, password string) bool { return true }),
 	)
 
 	if err != nil {
