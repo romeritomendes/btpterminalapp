@@ -4,6 +4,7 @@ package pages
 
 import (
 	"fmt"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -44,17 +45,18 @@ func (m HomeModel) Update(msg tea.Msg) (Page, tea.Cmd) {
 }
 
 func (m HomeModel) View() string {
-	s := "Please select an option to continue.\n\n"
+	var sb strings.Builder
+	sb.WriteString("Please select an option to continue.\n\n")
 	for i, choice := range m.choices {
 		cursor := " "
 		if m.cursor == i {
 			cursor = ">"
 		}
 
-		s += fmt.Sprintf("%s %s\n", cursor, choice)
+		fmt.Fprintf(&sb, "%s %s\n", cursor, choice)
 	}
 
-	return s
+	return sb.String()
 }
 
 func NewHomePage() Page {
