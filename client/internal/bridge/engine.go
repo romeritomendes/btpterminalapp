@@ -62,7 +62,7 @@ func ConnectSSH(ctx context.Context, cfg *config.Config) {
 	defer term.Restore(int(os.Stdin.Fd()), oldState)
 
 	width, height, _ := term.GetSize(int(os.Stdout.Fd()))
-	err = sess.RequestPty("xterm", height, width, ssh.TerminalModes{
+	err = sess.RequestPty("xterm-256color", height, width, ssh.TerminalModes{
 		ssh.ECHO:          0,
 		ssh.TTY_OP_ISPEED: 14400,
 		ssh.TTY_OP_OSPEED: 14400,
@@ -80,10 +80,12 @@ func ConnectSSH(ctx context.Context, cfg *config.Config) {
 	}
 
 	go func() {
+		prevW, prevH := width, height
 		for {
 			w, h, err := term.GetSize(int(os.Stdout.Fd()))
-			if err == nil {
+			if err == nil && w > 0 && h > 0 && (w != prevW || h != prevH) {
 				_ = sess.WindowChange(h, w)
+				prevW, prevH = w, h
 			}
 			time.Sleep(300 * time.Millisecond)
 		}
