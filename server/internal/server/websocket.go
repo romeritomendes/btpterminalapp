@@ -28,17 +28,20 @@ func HandlerWS(ctx context.Context) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log.Info("Handler: WS")
 
-		conn, err := upgrader.Upgrade(w, r, nil)
+		wsConn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
+			log.Error("Failed to upgrade to WebSocket", "error", err)
 			return
 		}
-		defer conn.Close()
+		defer wsConn.Close()
 
 		m := ui.NewModel("ws-user")
-		p := tea.NewProgram(m, tea.WithInput(conn.UnderlyingConn()), tea.WithOutput(conn.UnderlyingConn()))
+		p := tea.NewProgram(m, tea.WithInput(wsConn.UnderlyingConn()), tea.WithOutput(wsConn.UnderlyingConn()))
+
+		log.Info("WebSocket client connected", "remote", r.RemoteAddr)
 
 		if _, err := p.Run(); err != nil {
-			ctx.Done()
+			log.Debug("Error run", "error", err)
 			return
 		}
 	}
@@ -56,9 +59,9 @@ func HandlerProxySSH(ctx context.Context, cfg *config.Config) http.HandlerFunc {
 		defer wsConn.Close()
 
 		addrSSH := net.JoinHostPort("localhost", fmt.Sprint(cfg.SSHPort))
-		sshClient, err := net.Dial("tcp", addrSSH)
-		if err != nil {
-			log.Error("Failed to connect to SSH Server", "error", err)
+		sshClient, errDial := net.Dial("tcp", addrSSH)
+		if errDial != nil {
+			log.Error("Failed to connect to SSH Server", "error", errDial)
 			wsConn.WriteMessage(websocket.TextMessage, []byte("Failed to connect to SSH Server"))
 			return
 		}

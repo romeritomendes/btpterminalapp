@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 
+	"github.com/charmbracelet/log"
 	"github.com/romeritomendes/btpterminalapp/server/internal/config"
 )
 
@@ -34,6 +35,11 @@ func StartWeb(ctx context.Context, cfg *config.Config) error {
 		srv.Shutdown(context.Background())
 	}()
 
-	err := srv.ListenAndServe()
-	return err
+	log.Info("Starting Web Server", "addr", addr)
+	if err := srv.ListenAndServe(); err != nil {
+		log.Error("Error to start the server", "error", err)
+		return err
+	}
+
+	return nil
 }
